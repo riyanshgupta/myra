@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "functions": {
+    "api/health.py": {
+      "maxDuration": 5
+    },
+    "api/jiosaavn_route.py": {
+      "maxDuration": 15
+    }
+  }
+}
