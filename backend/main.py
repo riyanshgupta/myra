@@ -60,6 +60,18 @@ app.add_middleware(
 
 @app.exception_handler(AppError)
 async def handle_app_error(request: Request, exc: AppError):
+    logger.warning(
+        "Application error for %s %s: status=%s detail=%s",
+        request.method,
+        request.url.path,
+        exc.status_code,
+        exc.detail,
+        exc_info=(
+            (type(exc), exc, exc.__traceback__)
+            if exc.status_code >= 500
+            else None
+        ),
+    )
     headers = exc.headers or {}
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail}, headers=headers)
 
@@ -136,4 +148,5 @@ async def test_saavn(query: str):
     }
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
+    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info"
+                )

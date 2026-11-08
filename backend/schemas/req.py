@@ -51,6 +51,7 @@ class QueueTrackReq(BaseModel):
 
 class PlaybackStateReq(BaseModel):
     jiosaavn_id: str | None = None
+    encrypted_media_url: str | None = None
     is_playing: bool | None = None
     shuffle: bool | None = None
     repeat_mode: str | None = Field(default=None, pattern="^(off|one|all)$")

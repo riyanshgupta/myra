@@ -196,16 +196,19 @@ class JioSaavnClient(BaseClient):
 
     async def get_song(self, jiosaavn_id: str) -> list[dict[str, Any]]:
         payload = {
-            "type": "song",
-            "includeMetaTags": 0,
+            # "type": "song",
+            # "includeMetaTags": 0,
             "api_version": 4,
-            "token": jiosaavn_id,
+            "pids": jiosaavn_id,
             "_format": "json",
             "_marker": 0,
             "ctx": "wap6dot0",
-            "__call": "webapi.get",
+            "__call": "song.getDetails",
         }
         data = await self._get(payload)
+        # with open("song.json", "w") as f:
+        #     import json
+        #     json.dump(data, f, indent=2)
         return self._format_song_data(data.get("songs", []))
 
     async def get_audio(self, encrypted_media_url: str) -> dict[str, Any]:

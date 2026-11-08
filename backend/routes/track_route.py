@@ -1,6 +1,6 @@
 """HTTP routes for music-provider catalog and track metadata."""
 from fastapi import APIRouter, Depends, Query
-
+import time
 from exceptions import ResourceNotFoundError
 from routes.deps import get_track_service
 import schemas.resp as resp
@@ -12,7 +12,11 @@ router = APIRouter(tags=["music"])
 
 @router.get("/search/autocomplete", response_model=resp.TrackAutoCompleteResp)
 async def autocomplete(q: str, service: TrackService = Depends(get_track_service)):
-    return await service.autocomplete(q)
+    start = time.perf_counter()
+    result = await service.autocomplete(q)
+    end = time.perf_counter()
+    print(f"Autocomplete time: {end - start:.2f} seconds")
+    return result
 
 
 @router.get("/search", response_model=music_resp.SearchResponse)

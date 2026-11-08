@@ -3,51 +3,55 @@ from __future__ import annotations
 
 import uuid
 
+from config import settings
+from clients.saavn_client import JioSaavnClient
 from db.base_model import utcnow
 from exceptions import MusicProviderError
 from models.tracks import FavoriteTrack, Track
 from repositories.track_repo import TrackRepository
 
+logger = settings.get_logger("track_service")
+
 
 class TrackService:
-    def __init__(self, repo: TrackRepository, saavn_client) -> None:
+    def __init__(self, repo: TrackRepository, saavn_client: JioSaavnClient) -> None:
         self.repo = repo
         self.saavn_client = saavn_client
 
     async def autocomplete(self, query: str) -> dict:
-        return await self._provider_call(self.saavn_client.autocomplete(query))
+        return await self._provider_call("autocomplete", self.saavn_client.autocomplete(query))
 
     async def search(self, query: str, page: int, limit: int) -> dict:
-        result = await self._provider_call(self.saavn_client.search(query, limit=limit, page=page))
+        result = await self._provider_call("search", self.saavn_client.search(query, limit=limit, page=page))
         return {**result, "page": page, "limit": limit}
 
     async def trending(self, offset: int, limit: int) -> dict:
-        raw = await self._provider_call(self.saavn_client.get_top_trending_hindi())
+        raw = await self._provider_call("trending", self.saavn_client.get_top_trending_hindi())
         songs = self.saavn_client._format_song_data(raw)
         page = songs[offset:offset + limit]
-        return {"items": page, "songs": page, "offset": offset, "limit": limit, "total": len(songs)}
+        return {"items": page, "offset": offset, "limit": limit, "total": len(songs)}
 
     async def recommended(self, track_id: str, limit: int) -> dict | None:
-        songs = await self._provider_call(self.saavn_client.get_song(track_id))
+        songs = await self._provider_call("recommended song lookup", self.saavn_client.get_song(track_id))
         if not songs:
             return None
         current = songs[0]
         artist_ids = [str(a.get("id")) for a in current.get("artists", []) if a.get("id")]
-        recommendations = await self._provider_call(self.saavn_client.get_artist_other_top_songs(
+        recommendations = await self._provider_call("artist recommendations", self.saavn_client.get_artist_other_top_songs(
             artist_ids, track_id, current.get("language")
         ))
         return {"items": recommendations[:limit], "source_track_id": track_id, "limit": limit}
 
     async def get_song(self, jiosaavn_id: str) -> dict | None:
-        songs = await self._provider_call(self.saavn_client.get_song(jiosaavn_id))
+        songs = await self._provider_call("song lookup", self.saavn_client.get_song(jiosaavn_id))
         return songs[0] if songs else None
 
     async def artist_top_tracks(self, artist_id: str, page: int, limit: int) -> dict:
-        songs = await self._provider_call(self.saavn_client.get_top_tracks_by_artist_id(artist_id, page))
+        songs = await self._provider_call("artist top tracks", self.saavn_client.get_top_tracks_by_artist_id(artist_id, page))
         return {"data": songs[:limit], "page": page, "limit": limit}
 
     async def stream_url(self, encrypted_media_url: str) -> dict | None:
-        result = await self._provider_call(self.saavn_client.get_audio(encrypted_media_url))
+        result = await self._provider_call("audio URL", self.saavn_client.get_audio(encrypted_media_url))
         if not result.get("auth_url"):
             return None
         from clients.saavn_client import STREAM_HEADERS
@@ -89,10 +93,11 @@ class TrackService:
         return await self.repo.insert_track(self.song_to_model(song, song_id))
 
     @staticmethod
-    async def _provider_call(request):
+    async def _provider_call(operation: str, request):
         try:
             return await request
         except Exception as exc:
+            logger.exception("Music provider request failed during %s", operation)
             raise MusicProviderError() from exc
 
     async def most_played(self, offset: int, limit: int) -> dict:

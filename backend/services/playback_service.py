@@ -6,12 +6,17 @@ import uuid
 
 from db.base_model import utcnow
 from exceptions import ResourceNotFoundError
+from config import settings
 from models.tracks import PlaybackState, QueueTrack, Track
 from repositories.playback_repo import PlaybackRepository
 from services.track_service import TrackService
 
+logger = settings.get_logger("playback_service")
+
 
 class PlaybackService:
+    """Manage a user's queue, current player state, and playback history."""
+
     def __init__(self, repo: PlaybackRepository, tracks: TrackService, saavn_client) -> None:
         self.repo = repo
         self.tracks = tracks
@@ -208,6 +213,11 @@ class PlaybackService:
                 artist_ids, current_track.jiosaavn_id, song.get("language")
             )
         except Exception:
+            logger.exception(
+                "Failed to load artist recommendations for user_id=%s track_id=%s",
+                user_id,
+                current_track.jiosaavn_id,
+            )
             return 0
         rows = await self.repo.get_queue(user_id)
         existing = {track.jiosaavn_id for _, track in rows} | {current_track.jiosaavn_id}
