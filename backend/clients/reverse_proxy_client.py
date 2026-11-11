@@ -18,6 +18,15 @@ STREAM_HEADERS = {"Referer": "https://www.jiosaavn.com/"}
 REQUEST_TIMEOUT = 15
 
 
+def _optional_int(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 class ReverseProxyClient(BaseClient):
     def __init__(self, session: AsyncSession, base_url: str | None = None) -> None:
         super().__init__(session)
@@ -47,8 +56,10 @@ class ReverseProxyClient(BaseClient):
             formatted.append({
                 "encrypted_media_url": info.get("encrypted_media_url"), "jiosaavn_id": item.get("id"),
                 "title": item.get("title"), "subtitle": item.get("subtitle"), "cover_image": item.get("image"),
-                "language": item.get("language"), "year": item.get("year"), "play_count": item.get("play_count"),
-                "album": info.get("album"), "label": info.get("label"), "duration_seconds": info.get("duration"),
+                "language": item.get("language"), "year": _optional_int(item.get("year")),
+                "play_count": _optional_int(item.get("play_count")),
+                "album": info.get("album"), "label": info.get("label"),
+                "duration_seconds": _optional_int(info.get("duration")),
                 "artists": [{"name": a.get("name"), "id": a.get("id")} for a in info.get("artistMap", {}).get("primary_artists", [])],
             })
         return formatted

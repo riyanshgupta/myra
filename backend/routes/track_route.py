@@ -29,6 +29,7 @@ async def search(
     return await service.search(q, page, limit)
 
 
+@router.get("/trending", response_model=music_resp.SongPageResponse, include_in_schema=False)
 @router.get("/music/trending", response_model=music_resp.SongPageResponse)
 async def trending_hindi(
     offset: int = Query(default=0, ge=0),
