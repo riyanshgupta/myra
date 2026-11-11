@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     JWT_SECRET: str
     JWT_ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 30  # 30 days
+    JIOSAAVN_PROXY_URL: str = ""
     
     def get_logger(self, name: str):
         

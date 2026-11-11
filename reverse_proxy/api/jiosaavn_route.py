@@ -29,9 +29,9 @@ class AudioRequest(msgspec.Struct):
     query: str
 
 _GET_HANDLERS = {
-    "search": lambda service, query: service.search(query),
-    "autocomplete": lambda service, query: service.autocomplete(query),
-    "song": lambda service, query: service.get_song(query),
+    "search": lambda service, query, params: service.search(query, int((params.get("limit") or [10])[0]), int((params.get("page") or [1])[0])),
+    "autocomplete": lambda service, query, params: service.autocomplete(query),
+    "song": lambda service, query, params: service.get_song(query),
 }
 
 class handler(BaseHTTPRequestHandler):
@@ -48,9 +48,21 @@ class handler(BaseHTTPRequestHandler):
             return
 
         handler_fn = _GET_HANDLERS.get(query_type)
+        if query_type == "trending":
+            handler_fn = lambda service, query, params: service.get_top_trending_hindi()
+        elif query_type == "homepage":
+            handler_fn = lambda service, query, params: service.get_html_page("https://www.jiosaavn.com/")
+        elif query_type == "artist_top_tracks":
+            handler_fn = lambda service, query, params: service.get_top_tracks_by_artist_id(query, int((params.get("page") or [0])[0]))
+        elif query_type == "artist":
+            handler_fn = lambda service, query, params: service._get_artist(query, int((params.get("page") or [0])[0]))
+        elif query_type == "artist_recommendations":
+            handler_fn = lambda service, query, params: service.get_artist_other_top_songs(
+                [x for x in (params.get("artist_ids") or [""])[0].split(",") if x], query,
+                (params.get("language") or [None])[0])
         if handler_fn is None:
             self._send(400, ErrorResponse(
-                error=f"Invalid or missing 'type'. Must be one of: {', '.join(sorted(_GET_HANDLERS))}"
+                error="Invalid or missing 'type'. Supported types: search, autocomplete, song, artist, trending, artist_top_tracks, artist_recommendations, homepage"
             ))
             return
 
@@ -59,12 +71,19 @@ class handler(BaseHTTPRequestHandler):
             return
 
         try:
-            data = handler_fn(JioSaavnService(), query)
+            data = handler_fn(JioSaavnService(), query, params)
         except Exception as error:
             self._send(502, ErrorResponse(error=f"Failed to fetch from JioSaavn: {error}"))
             return
 
         self._send(200, {"type": query_type, "query": query, "data": data})
+
+    def do_OPTIONS(self) -> None:
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
 
     def do_POST(self) -> None:
         content_length = int(self.headers.get("Content-Length", 0) or 0)

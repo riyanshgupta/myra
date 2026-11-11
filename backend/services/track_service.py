@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 
 from config import settings
-from clients.saavn_client import JioSaavnClient
+from clients.saavn_provider import SaavnProvider
 from db.base_model import utcnow
 from exceptions import MusicProviderError
 from models.tracks import FavoriteTrack, Track
@@ -14,7 +14,7 @@ logger = settings.get_logger("track_service")
 
 
 class TrackService:
-    def __init__(self, repo: TrackRepository, saavn_client: JioSaavnClient) -> None:
+    def __init__(self, repo: TrackRepository, saavn_client: SaavnProvider) -> None:
         self.repo = repo
         self.saavn_client = saavn_client
 

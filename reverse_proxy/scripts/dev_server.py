@@ -7,8 +7,8 @@ needing the `vercel` CLI: every `api/<name>.py` module exporting a
 Vercel expects) gets served at `/api/<name>`.
 
 Run (from this directory, using the venv already set up here):
-    venv/bin/python main.py       # serves on :3000
-    PORT=8080 venv/bin/python main.py
+    venv/bin/python scripts/dev_server.py       # serves on :3000
+    PORT=8080 venv/bin/python scripts/dev_server.py
 
 Then:
     curl "http://localhost:3000/api/jiosaavn_route?type=search&query=Let%20me%20love%20you"
@@ -19,10 +19,13 @@ from __future__ import annotations
 import importlib
 import os
 import pkgutil
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-API_DIR = Path(__file__).parent / "api"
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_DIR))
+API_DIR = PROJECT_DIR / "api"
 
 
 def load_routes() -> dict[str, type[BaseHTTPRequestHandler]]:

@@ -255,4 +255,11 @@ class JioSaavnClient(BaseClient):
         data = await self._get(payload)
         return data.get("list") or []
 
-saavn_client = JioSaavnClient(session=base_session.get_session())
+# Keep the stable import name used throughout the application. Provider choice
+# happens here, while callers receive the same async interface.
+from clients.reverse_proxy_client import ReverseProxyClient
+
+saavn_client = ReverseProxyClient(
+    session=base_session.get_session(),
+    base_url=settings.JIOSAAVN_PROXY_URL,
+)
