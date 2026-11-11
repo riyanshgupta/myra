@@ -11,6 +11,15 @@ from core.session import base_session
 
 logger = settings.get_logger("saavn_client")
 
+
+def _optional_int(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
 JIOSAAVN_API_URL = "https://www.jiosaavn.com/api.php"
 REQUEST_TIMEOUT = 10  # seconds
 
@@ -61,11 +70,11 @@ class JioSaavnClient(BaseClient):
                     "subtitle": item.get("subtitle"),
                     "cover_image": item.get("image"),
                     "language": item.get("language"),
-                    "year": item.get("year"),
-                    "play_count": item.get("play_count"),
+                    "year": _optional_int(item.get("year")),
+                    "play_count": _optional_int(item.get("play_count")),
                     "album": info.get("album"),
                     "label": info.get("label"),
-                    "duration_seconds": info.get("duration"),
+                    "duration_seconds": _optional_int(info.get("duration")),
                     "artists": [
                         {
                             "name": artist.get("name"),

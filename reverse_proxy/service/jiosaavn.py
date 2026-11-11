@@ -15,6 +15,15 @@ _HEADERS = {
 }
 
 
+def _optional_int(value):
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 class JioSaavnService:
     """Provider operations mirrored by backend.clients.saavn_client."""
     _instance: "JioSaavnService | None" = None
@@ -41,11 +50,11 @@ class JioSaavnService:
                 "jiosaavn_id": item.get("id") or item.get("key"),
                 "title": item.get("title"), "subtitle": item.get("subtitle"),
                 "cover_image": item.get("image") or item.get("cover_image"),
-                "language": item.get("language"), "year": item.get("year"),
-                "play_count": item.get("play_count"),
+                "language": item.get("language"), "year": _optional_int(item.get("year")),
+                "play_count": _optional_int(item.get("play_count")),
                 "album": info.get("album") or (item.get("more_info") or {}).get("album"),
                 "label": info.get("label"),
-                "duration_seconds": info.get("duration"),
+                "duration_seconds": _optional_int(info.get("duration")),
                 "artists": [{"name": a.get("name"), "id": a.get("id")}
                             for a in info.get("artistMap", {}).get("primary_artists", [])],
             })
