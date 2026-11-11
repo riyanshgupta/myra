@@ -1,126 +1,118 @@
-"""
-service/jiosaavn.py
---------------------
-Singleton service wrapping the (undocumented) JioSaavn web API.
-
-Uses curl_cffi's Session — which impersonates a real browser's TLS/JA3
-fingerprint — instead of `requests`, since JioSaavn's edge blocks the
-plain fingerprint that `requests`/urllib3 present.
-
-The session is created once per warm serverless instance and reused
-across invocations for connection pooling.
-"""
-
+"""Synchronous JioSaavn provider used by the Vercel HTTP adapter."""
 from __future__ import annotations
 
+import re
 from curl_cffi.requests import Session as SyncSession
 
 JIOSAAVN_API_URL = "https://www.jiosaavn.com/api.php"
-REQUEST_TIMEOUT = 10  # seconds
-
-# The CDN behind `auth_url` (Akamai) 403s without this — it's not
-# validated as part of the signed URL itself, just required on the
-# actual media request.
+REQUEST_TIMEOUT = 10
 STREAM_HEADERS = {"Referer": "https://www.jiosaavn.com/"}
-
 _HEADERS = {
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "en-US,en;q=0.9",
-    "User-Agent": (
-        "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36"
-    ),
+    "User-Agent": ("Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) "
+                   "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36"),
 }
 
 
 class JioSaavnService:
+    """Provider operations mirrored by backend.clients.saavn_client."""
     _instance: "JioSaavnService | None" = None
 
     def __new__(cls) -> "JioSaavnService":
         if cls._instance is None:
             self = super().__new__(cls)
-            self._session = SyncSession(
-                headers=_HEADERS, impersonate="chrome", timeout=REQUEST_TIMEOUT
-            )
+            self._session = SyncSession(headers=_HEADERS, impersonate="chrome", timeout=REQUEST_TIMEOUT)
             cls._instance = self
         return cls._instance
 
     def _get(self, payload: dict) -> dict:
-        response = self._session.get(JIOSAAVN_API_URL, params=payload)
+        response = self._session.get(JIOSAAVN_API_URL, params=payload, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
         return response.json()
 
     @staticmethod
     def _format_song_data(results: list[dict]) -> list[dict]:
         data = []
         for item in results:
-            item = dict(item)
             info = dict(item.get("more_info") or {})
             data.append({
                 "encrypted_media_url": info.get("encrypted_media_url"),
-                "key": item.get("id"),
-                "title": item.get("title"),
-                "subtitle": item.get("subtitle"),
-                "perma_url": item.get("perma_url"),
-                "image": item.get("image"),
-                "language": item.get("language"),
-                "year": item.get("year"),
+                "jiosaavn_id": item.get("id") or item.get("key"),
+                "title": item.get("title"), "subtitle": item.get("subtitle"),
+                "cover_image": item.get("image") or item.get("cover_image"),
+                "language": item.get("language"), "year": item.get("year"),
                 "play_count": item.get("play_count"),
-                "more_info": {
-                    "album": info.get("album"),
-                    "label": info.get("label"),
-                    "album_url": info.get("album_url"),
-                    "duration": info.get("duration"),
-                },
+                "album": info.get("album") or (item.get("more_info") or {}).get("album"),
+                "label": info.get("label"),
+                "duration_seconds": info.get("duration"),
+                "artists": [{"name": a.get("name"), "id": a.get("id")}
+                            for a in info.get("artistMap", {}).get("primary_artists", [])],
             })
         return data
 
-    def search(self, query: str) -> list[dict]:
-        payload = {
-            "type": "song",
-            "p": 1,
-            "api_version": 4,
-            "n": 10,
-            "q": query,
-            "_format": "json",
-            "_marker": 0,
-            "ctx": "wap6dot0",
-            "__call": "search.getResults",
-        }
-        return self._format_song_data(self._get(payload).get("results", []))
+    @staticmethod
+    def _payload(call: str, **kwargs) -> dict:
+        return {"__call": call, "api_version": 4, "_format": "json", "_marker": 0,
+                "ctx": "wap6dot0", **kwargs}
 
-    def autocomplete(self, query: str) -> list[dict]:
-        payload = {
-            "type": "song",
-            "api_version": 4,
-            "query": query,
-            "_format": "json",
-            "_marker": 0,
-            "ctx": "wap6dot0",
-            "__call": "autocomplete.get",
-        }
-        return self._get(payload).get("songs", {}).get("data", [])
+    def search(self, query: str, limit: int = 10, page: int = 1) -> dict:
+        base = self._payload("search.getResults", type="song", p=page, n=limit, q=query)
+        songs = self._format_song_data(self._get(base).get("results", []))
+        artist_data = self._get({**base, "type": "artist"}).get("results", [])
+        artists = [{"artist_id": a.get("id"), "title": a.get("name") or a.get("title"),
+                    "cover_image": a.get("image"), "url": a.get("perma_url")} for a in artist_data]
+        return {"songs": songs, "artists": artists}
 
-    def get_song(self, song_id: str) -> list[dict]:
-        payload = {
-            "type": "song",
-            "includeMetaTags": 0,
-            "api_version": 4,
-            "token": song_id,
-            "_format": "json",
-            "_marker": 0,
-            "ctx": "wap6dot0",
-            "__call": "webapi.get",
+    def autocomplete(self, query: str) -> dict:
+        data = self._get(self._payload("autocomplete.get", query=query))
+        return {
+            "songs": [{"jiosaavn_id": (s.get("url") or "").rstrip("/").split("/")[-1],
+                       "title": s.get("title"), "cover_image": s.get("image"), "album": s.get("album")}
+                      for s in data.get("songs", {}).get("data", [])],
+            "artists": [{"artist_id": (a.get("url") or "").rstrip("/").split("/")[-1],
+                         "title": a.get("title"), "cover_image": a.get("image")}
+                        for a in data.get("artists", {}).get("data", [])],
         }
-        return self._format_song_data(self._get(payload).get("songs", []))
+
+    def _get_artist(self, artist_id: str, page: int = 0) -> dict:
+        return self._get(self._payload("webapi.get", type="artist", includeMetaTags=0,
+            token=artist_id, p=page, n_song=50, n_album=50))
+
+    def get_top_tracks_by_artist(self, query: str, page: int = 0) -> list[dict]:
+        artists = self.autocomplete(query).get("artists", [])
+        return self.get_top_tracks_by_artist_id(artists[0]["artist_id"], page) if artists and artists[0].get("artist_id") else []
+
+    def get_top_tracks_by_artist_id(self, artist_id: str, page: int = 0) -> list[dict]:
+        return self._format_song_data(self._get_artist(artist_id, page).get("topSongs", []))
+
+    def get_song(self, jiosaavn_id: str) -> list[dict]:
+        data = self._get(self._payload("song.getDetails", pids=jiosaavn_id))
+        return self._format_song_data(data.get("songs", []))
 
     def get_audio(self, encrypted_media_url: str) -> dict:
-        payload = {
-            "__call": "song.generateAuthToken",
-            "url": encrypted_media_url,
-            "bitrate": 64,
-            "api_version": 4,
-            "_format": "json",
-            "ctx": "wap6dot0",
-            "_marker": 0,
-        }
-        return self._get(payload)
+        return self._get(self._payload("song.generateAuthToken", url=encrypted_media_url, bitrate=64))
+
+    def get_artist_other_top_songs(self, artist_ids: list[str], song_id: str, language: str | None = None) -> list[dict]:
+        if not artist_ids:
+            return []
+        args = {"ctx": "web6dot0", "artist_ids": ",".join(artist_ids), "song_id": song_id}
+        if language:
+            args["language"] = language
+        data = self._get(self._payload("search.artistOtherTopSongs", **args))
+        songs = data if isinstance(data, list) else (data.get("songs") or data.get("results") or data.get("list") or [])
+        return self._format_song_data(songs)
+
+    def get_html_page(self, url: str) -> str:
+        response = self._session.get(url, headers={**_HEADERS, **STREAM_HEADERS}, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+        return response.text
+
+    def get_top_trending_hindi(self) -> list[dict]:
+        html = self.get_html_page("https://www.jiosaavn.com/")
+        match = re.search(r'href="(/featured/hindi-india-superhits-top-50/[^"]+)"', html)
+        if not match:
+            raise RuntimeError("Trending playlist link not found on JioSaavn homepage")
+        data = self._get(self._payload("webapi.get", type="playlist", token=match.group(1).split("/")[-1],
+            p=0, n=50, includeMetaTags=0))
+        return data.get("list") or []

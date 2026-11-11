@@ -17,7 +17,7 @@ from agent.tools.base import (
 from clients.saavn_client import STREAM_HEADERS
 
 if TYPE_CHECKING:
-    from clients.saavn_client import JioSaavnClient
+    from clients.saavn_provider import SaavnProvider
     from services.playback_service import PlaybackService
 
 # jiosaavn_id -> formatted song. Filled from search results so stream_url needs
@@ -88,7 +88,7 @@ class JioSaavnTool(Tool):
 - stream_url: start playing a song in the app. Arguments: song_id (an `id` from an earlier result). Starting a different song also replaces the user's queue with artist recommendations.
 Songs come back with id, title, album, year, language and duration_seconds."""
 
-    def __init__(self, client: JioSaavnClient, playback_service: PlaybackService | None = None) -> None:
+    def __init__(self, client: SaavnProvider, playback_service: PlaybackService | None = None) -> None:
         self._client = client
         self._playback_service = playback_service
         self._actions = {
